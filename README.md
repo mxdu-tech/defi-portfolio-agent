@@ -34,7 +34,7 @@ Redis (session) + Alchemy RPC (chain data)
 ## Quick start
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/defi-portfolio-agent.git
+git clone https://github.com/mxdu-tech/defi-portfolio-agent.git
 cd defi-portfolio-agent
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -45,7 +45,7 @@ python test_day1.py
 ## Roadmap
 
 - [x] Project scaffold
-- [ ] LangGraph ReAct loop
+- [x] LangGraph ReAct loop
 - [ ] Web3 tools (ETH balance, gas, Aave position)
 - [ ] Session memory (Redis)
 - [ ] Model routing (Claude / DeepSeek)
