@@ -1,27 +1,31 @@
-from json import load
 from langgraph.graph import StateGraph, END
-from langchain_openai import ChatOpenAI
+from langgraph.prebuilt import ToolNode
+from src.agent.nodes import model
 from src.agent.state import AgentState
-from dotenv import load_dotenv
-import os
+from src.tools import tools
 
-load_dotenv()
 
-model = ChatOpenAI(
-    model="anthropic/claude-sonnet-4-5", 
-    base_url="https://openrouter.ai/api/v1",
-    api_key=os.getenv("OPENROUTER_API_KEY")
-)
+model_with_tools = model.bind_tools(tools)
 
-def agent_node(state: AgentState):
-    response = model.invoke(state["messages"])
+def agent_node_with_tools(state: AgentState):
+    response = model_with_tools.invoke(state["messages"])
     return {"messages": [response]}
+
+def should_continue(state: AgentState):
+    last_message = state["messages"][-1]
+    if hasattr(last_message, "tool_calls") and last_message.tool_calls:
+        return "tools"
+    return END
 
 def create_graph():
     workflow = StateGraph(AgentState)
-    workflow.add_node("agent", agent_node)
+    workflow.add_node("agent", agent_node_with_tools)
+    workflow.add_node("tools", ToolNode(tools))
+
     workflow.set_entry_point("agent")
-    workflow.add_edge("agent", END)
+    workflow.add_conditional_edges("agent", should_continue)
+    workflow.add_edge("tools", "agent")
+
     return workflow.compile()
 
 agent = create_graph()
