@@ -2,7 +2,6 @@ from langchain_core.tools import tool
 from web3 import Web3
 from dotenv import load_dotenv
 import os
-
 import web3
 
 load_dotenv()
@@ -36,4 +35,4 @@ def get_gas_price() -> str:
     else:
         advice = "Gas is high, consider waiting"
     
-    return f"Current gas price: {float(gas_gwei): .2f} Gwei. {advice}"
+    return f"Current Gas price: {float(gas_gwei): .2f} Gwei. {advice}"
