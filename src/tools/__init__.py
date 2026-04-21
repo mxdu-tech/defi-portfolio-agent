@@ -1,8 +1,3 @@
-from langchain_core.tools import tool
+from src.tools.chain import get_eth_balance, get_gas_price
 
-@tool
-def get_eth_balance(address: str) -> str:
-    """Retrieve the ETH balance of a given Ethereum address."""
-    return f"[Placeholder] ETH balance lookup for address {address} will be implemented in the future"
-
-tools = [get_eth_balance]
+tools = [get_eth_balance, get_gas_price]
