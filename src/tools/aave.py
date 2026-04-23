@@ -1,4 +1,4 @@
-import stat
+from langchain_core.callbacks import RetrieverManagerMixin
 from langchain_core.tools import tool
 from web3 import Web3
 from dotenv import load_dotenv
@@ -78,3 +78,34 @@ def get_aave_position(address: str) -> str:
             - Total Debt:       ${total_debt_usd:.2f} USD
             - Available to Borrow: ${available_borrows:.2f} USD
             - Health Factor:    {health_factor_display} ({status})"""
+
+
+@tool
+def analyze_aave_risk(
+    total_collateral_usd: float,
+    total_debt_usd: float,
+    health_factor: float
+) -> str:
+    """Analyze Aave position risk and provide actionable recommendations.
+    Use this after get_aave_position to give the user specific advice.
+    """
+    if total_debt_usd == 0:
+        return "No debt detected. Position is safe with no liquidation risk."
+    
+    target_hf = 1.8
+    liquidation_thresold = 0.825
+
+    required_collateral = (target_hf * total_collateral_usd) / liquidation_thresold
+    collateral_to_add = max(0, required_collateral - total_collateral_usd)
+
+    max_debt_for_target = (total_collateral_usd * liquidation_thresold) / target_hf
+    debt_to_repay = max(0, total_debt_usd - max_debt_for_target)
+
+    status = _get_health_status(health_factor)
+
+    return f"""Risk Analysis:
+        - Status: {status}
+        - To reach Health Factor {target_hf}:
+        Option A: Add ${collateral_to_add:.2f} USD worth of collateral
+        Option B: Repay ${debt_to_repay:.2f} USD worth of debt
+        - Current ratio: ${total_debt_usd:.2f} debt against ${total_collateral_usd:.2f} collateral"""
