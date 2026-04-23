@@ -1,16 +1,11 @@
-from src.agent.graph import agent
+# scan_aave.py
+from src.tools.aave import get_aave_position
 
-result = agent.invoke({
-    "messages": [
-        {
-            "role": "user",
-            "content": (
-                "Check my Aave position for 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 "
-                "and tell me if I need to take any action to protect it."
-            )
-        }
-    ]
-})
+# base sepolia testnet
+candidates = [
+    "0x8ed7af7d0B09B693a81f38947B9Df15c2f008296", 
+]
 
-print("=== Test: Aave position + risk analysis ===")
-print(result["messages"][-1].content)
+for addr in candidates:
+    print(f"\n--- {addr[:10]}... ---")
+    print(get_aave_position.invoke({"address": addr}))

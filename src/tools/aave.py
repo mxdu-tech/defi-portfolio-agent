@@ -1,4 +1,5 @@
 from langchain_core.callbacks import RetrieverManagerMixin
+from langchain_core.runnables.config import P
 from langchain_core.tools import tool
 from web3 import Web3
 from dotenv import load_dotenv
@@ -12,7 +13,23 @@ network = os.getenv("NETWORK")
 rpc_url = os.getenv(f"ALCHEMY_RPC_URL_{network.upper()}")
 w3 = Web3(Web3.HTTPProvider(rpc_url))
 
-AAVE_POOL_ADDRESS = os.getenv(f"AAVE_POOL_{network.upper()}")
+PROVIDER_ABI = [
+    {
+        "inputs": [],
+        "name": "getPool",
+        "outputs": [{"internalType": "address", "name": "",  "type": "address"}],
+        "stateMutability": "view",
+        "type": "function",
+    }
+]
+
+provider_address = os.getenv(f"AAVE_POOL_ADDRESSES_PROVIDER_{network.upper()}")
+provider_contract = w3.eth.contract(
+    address=w3.to_checksum_address(provider_address),
+    abi = PROVIDER_ABI
+)
+
+AAVE_POOL_ADDRESS = provider_contract.functions.getPool().call()
 
 AAVE_POOL_ABI = [
     {

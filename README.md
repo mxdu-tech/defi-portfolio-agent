@@ -46,7 +46,7 @@ python test_day1.py
 
 - [x] Project scaffold
 - [x] LangGraph ReAct loop
-- [ ] Web3 tools (ETH balance, gas, Aave position)
+- [x] Web3 tools (ETH balance, gas, Aave position)
 - [ ] Session memory (Redis)
 - [ ] Model routing (Claude / DeepSeek)
 - [ ] Transaction confirmation flow
