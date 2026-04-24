@@ -1,13 +1,21 @@
-from langchain_core.messages import HumanMessage, SystemMessage
+import os
+import re
+import logging
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
-import os
-from dotenv import load_dotenv
+from src.memory.session import (
+    get_user_address, 
+    save_message,
+    save_session_address,
+    save_user_meta
+)
 
-from src.memory.session import get_user_address, save_message, save_user_address
+logger = logging.getLogger(__name__)
 
-load_dotenv()
+EVM_ADDRESS_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+
 
 model = ChatOpenAI(
     model="anthropic/claude-sonnet-4-5", 
@@ -15,29 +23,71 @@ model = ChatOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY")
 )
 
+def load_session_node(state: AgentState) -> dict:
+    session_id = state.get("session_id", "default")
+    stored_address = get_user_address(session_id)
+    return{
+        "user_address": stored_address or state.get("user_address")
+    }
+
 def agent_node_with_tools(model_with_tools):
     def node(state: AgentState):
-        session_id = state.get("session_id", "default")
         messages = state["messages"]
 
-        if not any(isinstance(m, SystemMessage) for m in messages):
-            messages = [SystemMessage(content=SYSTEM_PROMPT)] + messages
+        # Build system prompt - inject known address if available
+        system_content = SYSTEM_PROMPT
+        if state.get("user_address"):
+            system_content += (
+                f"\n\nThe user's wallet address is: {state['user_address']}"
+            )
 
-        # Inject remembered address into system prompt if available
-        saved_address = get_user_address(session_id)
-        if saved_address and state.get("user_address") is None:
-            address_hint = f"\n\nThe user's wallet address if: {saved_address}"
-            messages[0] = SystemMessage(content=SYSTEM_PROMPT + address_hint)
+        if not any(isinstance(m, SystemMessage) for m in messages):
+            messages = [SystemMessage(content=system_content)] + messages
+        else:
+            messages[0] = SystemMessage(content=system_content)
         
         response = model_with_tools.invoke(messages)
 
-        # Persist last user message and response
-        last_human = next(
-            (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
-        )
-        if last_human:
-            save_message(session_id, "user", last_human.content)
-        save_message(session_id, "assistant", response.content)
+        # Extract address from latest human message if not already in state
+        new_address = state.get("user_address")
+        if not new_address:
+            last_human = next(
+                (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
+            )
+            if last_human:
+                match = EVM_ADDRESS_RE.search(last_human.content)
+                if match:
+                    new_address = match.group(0)
+        
+        return {
+            "messages": [response],
+            "user_address": new_address
+        }
 
-        return {"messages": [response]}
     return node
+
+
+def save_session_node(state: AgentState) -> dict:
+    """Write phase: persist state to Redis after reasoning completes."""
+    session_id = state.get("session_id", "default")
+    messages = state["messages"]
+    address = state.get("user_address")
+
+    # persist last human and AI messages
+    last_human = next(
+        (m for m in reversed(messages) if isinstance(m, HumanMessage)), None
+    )
+    last_ai = next(
+        (m for m in reversed(messages) if isinstance(m, AIMessage)), None
+    )
+    if last_human:
+        save_message(session_id, "user", last_human.content)
+    if last_ai:
+        save_message(session_id, "assistant", last_ai.content)
+    
+    # persist address at both session and user level
+    if address:
+        save_session_address(session_id, address) # session level
+        save_user_meta(address)
+    
+    return {}
