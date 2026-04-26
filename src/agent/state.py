@@ -9,3 +9,4 @@ class AgentState(TypedDict):
     pending_action: Optional[str]
     session_id: Optional[str]
     intent: Optional[str]
+    confirmed: Optional[bool]

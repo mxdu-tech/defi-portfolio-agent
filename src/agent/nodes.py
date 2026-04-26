@@ -1,8 +1,11 @@
 import os
 import re
+import json
 import logging
+from unittest import result
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
+from langgraph.types import interrupt
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
 from src.memory.session import (
@@ -11,16 +14,30 @@ from src.memory.session import (
     save_session_address,
     save_user_meta
 )
+from src.tools.transaction import execute_repay
 
 logger = logging.getLogger(__name__)
 
 EVM_ADDRESS_RE = re.compile(r"0x[a-fA-F0-9]{40}")
+ACTION_RE       = re.compile(r"\[ACTION\](.*?)\[/ACTION\]", re.DOTALL)
+PREPARE_TOOLS   = {"prepare_repay_tx"}
 
 
 model = ChatOpenAI(
     model="anthropic/claude-sonnet-4-5", 
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY")
+)
+
+SIMPLE_INTENTS = {
+    "greeting", "help", "balance", "gas", "price"
+}
+
+SIMPLE_INTENT_RE = re.compile(
+    r"\b(hi|hello|help|what can you do"
+    r"|gas price|eth price|btc price|token price"
+    r"|check balance|eth balance)\b",
+    re.IGNORECASE,
 )
 
 model_fast = ChatOpenAI(
@@ -64,10 +81,24 @@ def agent_node_with_tools(model_with_tools):
                 match = EVM_ADDRESS_RE.search(last_human.content)
                 if match:
                     new_address = match.group(0)
+
         
+        pending_action = state.get("pending_action")
+        if not pending_action:
+            for m in reversed(state["messages"]):
+                if hasattr(m, "content"):
+                    action_match = ACTION_RE.search(m.content)
+                    if action_match:
+                        try:
+                            pending_action = json.loads(action_match.group(1))
+                        except json.JSONDecodeError:
+                            pass
+                        break
+
         return {
-            "messages": [response],
-            "user_address": new_address
+            "messages":      [response],
+            "user_address":  new_address,
+            "pending_action": pending_action,
         }
 
     return node
@@ -98,16 +129,7 @@ def save_session_node(state: AgentState) -> dict:
     
     return {}
 
-SIMPLE_INTENTS = {
-    "greeting", "help", "balance", "gas", "price"
-}
 
-SIMPLE_INTENT_RE = re.compile(
-    r"\b(hi|hello|help|what can you do"
-    r"|gas price|eth price|btc price|token price"
-    r"|check balance|eth balance)\b",
-    re.IGNORECASE,
-)
 
 def intent_node(state: AgentState) -> dict:
     """Classify intent complexity to route to the appropriate model."""
@@ -131,3 +153,57 @@ def intent_node(state: AgentState) -> dict:
     )
 
     return {"intent": "simple" if is_simple else "complex"}
+
+
+def confirmation_node(state: AgentState) -> dict:
+    """Interrupt and wait for user yes/no on a pending transaction."""
+    pending = state.get("pending_action", {})
+
+    plan_msg = next(
+        (m for m in reversed(state["messages"])
+        if hasattr(m, "content") and "[PENDING CONFIRMATION]" in m.content),
+        None
+    )
+
+    plan_text = ""
+    if plan_msg:
+        plan_text = ACTION_RE.sub("", plan_msg.content)
+        plan_text = plan_text.replace("[PENDING CONFIRMATION]", "").strip()
+    
+    user_reply = interrupt({
+        "plan": plan_text,
+        "action": pending,
+        "prompt": "Type 'yes' to confirm or 'no' to cancel."
+    })
+
+    confirmed = isinstance(user_reply, str) and user_reply.strip().lower() in {"yes", "y"}
+
+    if confirmed is True:
+        return {"confirmed": confirmed}
+    else:
+        return {
+            "confirmed": False,
+            "pending_action": None,
+            "messages": [AIMessage(content="Transaction cancelled.")]
+        }
+
+
+def execute_node(state: AgentState) -> dict:
+    """Execute confirmed transaction using pending_action from state."""
+
+    pending = state.get("pending_action")
+    if not pending:
+        return {"messages": AIMessage(content="Error: no pending action found.")}
+    
+    action_type = pending.get("type")
+
+    if action_type == "repay":
+        result = execute_repay(pending)
+    else:
+        result = f"Unknown action type: {action_type}"
+    
+    return {
+        "messages": [AIMessage(content=result)],
+        "pending_action": None,
+        "confirmed": None
+    }
