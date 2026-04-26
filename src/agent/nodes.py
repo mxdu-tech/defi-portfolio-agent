@@ -23,6 +23,12 @@ model = ChatOpenAI(
     api_key=os.getenv("OPENROUTER_API_KEY")
 )
 
+model_fast = ChatOpenAI(
+    model="deepseek/deepseek-chat",
+    base_url="https://openrouter.ai/api/v1",
+    api_key=os.getenv("OPENROUTER_API_KEY")
+)
+
 def load_session_node(state: AgentState) -> dict:
     session_id = state.get("session_id", "default")
     stored_address = get_user_address(session_id)
@@ -91,3 +97,37 @@ def save_session_node(state: AgentState) -> dict:
         save_user_meta(address)
     
     return {}
+
+SIMPLE_INTENTS = {
+    "greeting", "help", "balance", "gas", "price"
+}
+
+SIMPLE_INTENT_RE = re.compile(
+    r"\b(hi|hello|help|what can you do"
+    r"|gas price|eth price|btc price|token price"
+    r"|check balance|eth balance)\b",
+    re.IGNORECASE,
+)
+
+def intent_node(state: AgentState) -> dict:
+    """Classify intent complexity to route to the appropriate model."""
+    last_human = next(
+        (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
+        None,
+    )
+    if not last_human:
+        return {"intent": "complex"}
+
+    text = last_human.content.lower()
+
+    # Simple: short message with no DeFi analysis keywords
+    is_simple = (
+        len(text.split()) <= 10
+        and SIMPLE_INTENT_RE.search(text) is not None
+        and not any(kw in text for kw in [
+            "aave", "health factor", "liquidat", "repay",
+            "borrow", "collateral", "position", "analyze"
+        ])
+    )
+
+    return {"intent": "simple" if is_simple else "complex"}

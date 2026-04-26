@@ -8,3 +8,4 @@ class AgentState(TypedDict):
     user_address: Optional[str]
     pending_action: Optional[str]
     session_id: Optional[str]
+    intent: Optional[str]
