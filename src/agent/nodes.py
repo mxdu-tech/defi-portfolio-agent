@@ -8,6 +8,7 @@ from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
 from src.agent.prompts import SYSTEM_PROMPT
 from src.agent.state import AgentState
+from src.memory import session
 from src.memory.session import (
     get_user_address, 
     save_message,
@@ -16,7 +17,7 @@ from src.memory.session import (
 )
 from src.tools.transaction import execute_repay
 
-logger = logging.getLogger(__name__)
+audit = logging.getLogger("audit")
 
 EVM_ADDRESS_RE = re.compile(r"0x[a-fA-F0-9]{40}")
 ACTION_RE       = re.compile(r"\[ACTION\](.*?)\[/ACTION\]", re.DOTALL)
@@ -126,8 +127,18 @@ def save_session_node(state: AgentState) -> dict:
     if address:
         save_session_address(session_id, address) # session level
         save_user_meta(address)
+
+    # Audit log - only fires when execute_node actually ran
+    executed = state.get("executed_action")
+    if executed:
+        audit.info(
+            "TRANSACTION_EXECUTED session=%s address=%s action=%s",
+            session_id,
+            address,
+            executed
+        )
     
-    return {}
+    return {"executed_action": None}
 
 
 
@@ -205,5 +216,6 @@ def execute_node(state: AgentState) -> dict:
     return {
         "messages": [AIMessage(content=result)],
         "pending_action": None,
-        "confirmed": None
+        "confirmed": None,
+        "executed_action": pending
     }

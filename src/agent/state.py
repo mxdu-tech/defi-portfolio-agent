@@ -10,3 +10,4 @@ class AgentState(TypedDict):
     session_id: Optional[str]
     intent: Optional[str]
     confirmed: Optional[bool]
+    executed_action: Optional[dict]

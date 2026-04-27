@@ -1,8 +1,10 @@
+import os
+import json
 from langchain_core.tools import tool
 from web3 import Web3
 from dotenv import load_dotenv
-import json
-import os
+from src.tools.guards import validate_address, validate_repay_amount, is_high_value
+
 
 load_dotenv()
 
@@ -54,10 +56,23 @@ def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
     amount_usdc: amount of USDC to repay
     user_address: wallet address that will sign
     """
-    if not w3.is_address(user_address):
-        return f"Error: {user_address} is not a valid Ethereum address"
-    if amount_usdc <= 0:
-        return "Error: amount must be greater than 0"
+    # Parameter guards
+    ok, err = validate_address(user_address)
+    if not ok:
+        return f"Error: {err}"
+
+    ok, err = validate_repay_amount(amount_usdc)
+    if not ok:
+        return f"Error: {err}"
+
+    # High value warning
+    warning = ""
+    if is_high_value(amount_usdc):
+        warning = (
+            f"\n HIGH VALUE TRANSACTION: ${amount_usdc:,.2f} USDC. "
+            f"Please double-check all details before confirming."
+        )
+
 
     pool_address  = _get_pool_address()
     pool          = w3.eth.contract(
@@ -90,7 +105,7 @@ def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
     }
 
     summary = (
-        f"Transaction plan ready:\n"
+        f"Transaction plan ready:{warning}\n"
         f"- Action:    Repay {amount_usdc} USDC on Aave V3\n"
         f"- Network:   {network}\n"
         f"- Contract:  {pool_address}\n"
