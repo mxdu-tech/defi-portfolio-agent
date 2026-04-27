@@ -2,7 +2,6 @@ import os
 import re
 import json
 import logging
-from unittest import result
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from langgraph.types import interrupt
@@ -17,6 +16,7 @@ from src.memory.session import (
 )
 from src.tools.transaction import execute_repay
 
+logger = logging.getLogger(__name__)
 audit = logging.getLogger("audit")
 
 EVM_ADDRESS_RE = re.compile(r"0x[a-fA-F0-9]{40}")
@@ -141,9 +141,7 @@ def save_session_node(state: AgentState) -> dict:
     return {"executed_action": None}
 
 
-
 def intent_node(state: AgentState) -> dict:
-    """Classify intent complexity to route to the appropriate model."""
     last_human = next(
         (m for m in reversed(state["messages"]) if isinstance(m, HumanMessage)),
         None,
@@ -153,21 +151,24 @@ def intent_node(state: AgentState) -> dict:
 
     text = last_human.content.lower()
 
-    # Simple: short message with no DeFi analysis keywords
+    # DeepSeek only handles pure conversation — no tools involved
     is_simple = (
-        len(text.split()) <= 10
+        len(text.split()) <= 8
         and SIMPLE_INTENT_RE.search(text) is not None
         and not any(kw in text for kw in [
             "aave", "health factor", "liquidat", "repay",
-            "borrow", "collateral", "position", "analyze"
+            "borrow", "collateral", "position", "analyze",
+            "balance", "address", "0x", "gas", "price",
+            "eth", "btc", "usdc", "token",
         ])
     )
-
     return {"intent": "simple" if is_simple else "complex"}
 
 
 def confirmation_node(state: AgentState) -> dict:
     """Interrupt and wait for user yes/no on a pending transaction."""
+    logger.info("confirmation_node reached — calling interrupt()")
+
     pending = state.get("pending_action", {})
 
     plan_msg = next(
@@ -181,11 +182,15 @@ def confirmation_node(state: AgentState) -> dict:
         plan_text = ACTION_RE.sub("", plan_msg.content)
         plan_text = plan_text.replace("[PENDING CONFIRMATION]", "").strip()
     
+    logger.info(f"interrupting with plan: {plan_text[:80]}")
+    
     user_reply = interrupt({
         "plan": plan_text,
         "action": pending,
         "prompt": "Type 'yes' to confirm or 'no' to cancel."
     })
+
+    logger.info(f"interrupt resumed with: {user_reply!r}")
 
     confirmed = isinstance(user_reply, str) and user_reply.strip().lower() in {"yes", "y"}
 
@@ -195,7 +200,7 @@ def confirmation_node(state: AgentState) -> dict:
         return {
             "confirmed": False,
             "pending_action": None,
-            "messages": [AIMessage(content="Transaction cancelled.")]
+            "messages": [AIMessage(content="Transaction cancelled. No action was executed.")]
         }
 
 
