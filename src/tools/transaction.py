@@ -39,6 +39,29 @@ AAVE_POOL_ABI = [
     }
 ]
 
+ERC20_ABI = [
+    {
+        "name": "approve",
+        "type": "function",
+        "stateMutability": "nonpayable",
+        "inputs": [
+            {"name": "spender", "type": "address"},
+            {"name": "amount", "type": "uint256"},
+        ],
+        "outputs": [{"name": "", "type": "bool"}],
+    },
+    {
+        "name": "allowance",
+        "type": "function",
+        "stateMutability": "view",
+        "inputs": [
+            {"name": "owner", "type": "address"},
+            {"name": "spender", "type": "address"},
+        ],
+        "outputs": [{"name": "", "type": "uint256"}],
+    },
+]
+
 def _get_pool_address() -> str:
     provider_address = os.getenv(
         f"AAVE_POOL_ADDRESSES_PROVIDER_{network.upper()}"
@@ -51,12 +74,11 @@ def _get_pool_address() -> str:
 
 @tool
 def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
-    """Prepare an Aave v3 USDC repay transaction plan for user review.
+    """Prepare an Aave V3 USDC repay transaction plan for user review.
     Does NOT execute anything. Returns a plan summary and structured action data.
     amount_usdc: amount of USDC to repay
     user_address: wallet address that will sign
     """
-    # Parameter guards
     ok, err = validate_address(user_address)
     if not ok:
         return f"Error: {err}"
@@ -65,7 +87,6 @@ def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
     if not ok:
         return f"Error: {err}"
 
-    # High value warning
     warning = ""
     if is_high_value(amount_usdc):
         warning = (
@@ -73,49 +94,96 @@ def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
             f"Please double-check all details before confirming."
         )
 
+    pool_address = _get_pool_address()
+    checksum_user = w3.to_checksum_address(user_address)
+    checksum_pool = w3.to_checksum_address(pool_address)
+    checksum_usdc = w3.to_checksum_address(USDC_ADDRESS)
 
-    pool_address  = _get_pool_address()
-    pool          = w3.eth.contract(
-        address=w3.to_checksum_address(pool_address),
+    amount_usdc_unit = int(amount_usdc * 1e6)
+
+    pool = w3.eth.contract(
+        address=checksum_pool,
         abi=AAVE_POOL_ABI,
     )
-    amount_usdc_unit    = int(amount_usdc * 1e6)
-    checksum_user = w3.to_checksum_address(user_address)
 
-    tx = pool.functions.repay(
-        w3.to_checksum_address(USDC_ADDRESS),
+    usdc = w3.eth.contract(
+        address=checksum_usdc,
+        abi=ERC20_ABI,
+    )
+
+    # 1. Check current USDC allowance
+    allowance = usdc.functions.allowance(
+        checksum_user,
+        checksum_pool,
+    ).call()
+
+    need_approve = allowance < amount_usdc_unit
+
+    # 2. Build approve tx if allowance is insufficient
+    approve_tx = None
+    if need_approve:
+        approve_tx = usdc.functions.approve(
+            checksum_pool,
+            amount_usdc_unit,
+        ).build_transaction({
+            "from": checksum_user,
+            "gas": 100000,
+        })
+
+    # 3. Build repay tx
+    repay_tx = pool.functions.repay(
+        checksum_usdc,
         amount_usdc_unit,
-        2,
+        2,  # variable debt
         checksum_user,
     ).build_transaction({
-        "from":  checksum_user,
-        "nonce": w3.eth.get_transaction_count(checksum_user),
-        "gas":   200000,
+        "from": checksum_user,
+        "gas": 200000,
     })
 
-    # Structured action saved alongside human-readable summary
     pending_action = {
-        "type":         "repay",
-        "amount_usdc":  amount_usdc,
+        "type": "repay",
+        "amount_usdc": amount_usdc,
         "user_address": checksum_user,
-        "network":      network,
-        "contract":     pool_address,
-        "gas":          tx["gas"],
-        "nonce":        tx["nonce"],
+        "network": network,
+        "chain_id": 84532,  # Base Sepolia
+
+        "need_approve": need_approve,
+
+        "approve_tx": {
+            "to": checksum_usdc,
+            "data": approve_tx["data"],
+            "value": "0",
+            "gas": approve_tx["gas"],
+        } if need_approve else None,
+
+        "repay_tx": {
+            "to": checksum_pool,
+            "data": repay_tx["data"],
+            "value": "0",
+            "gas": repay_tx["gas"],
+        },
+
+        "asset": checksum_usdc,
+        "interest_rate_mode": 2,
+        "allowance": allowance,
+        "required_allowance": amount_usdc_unit,
     }
 
     summary = (
         f"Transaction plan ready:{warning}\n"
-        f"- Action:    Repay {amount_usdc} USDC on Aave V3\n"
-        f"- Network:   {network}\n"
-        f"- Contract:  {pool_address}\n"
-        f"- Gas limit: {tx['gas']}\n"
-        f"- Nonce:     {tx['nonce']}\n"
+        f"- Action: Repay {amount_usdc} USDC on Aave V3\n"
+        f"- Network: {network}\n"
+        f"- Pool: {checksum_pool}\n"
+        f"- USDC: {checksum_usdc}\n"
+        f"- Approval needed: {need_approve}\n"
+        f"- Repay gas limit: {repay_tx['gas']}\n"
         f"[PENDING CONFIRMATION]\n"
         f"[ACTION]{json.dumps(pending_action)}[/ACTION]"
     )
-    return summary
 
+    return summary
+    
 def execute_repay(pending_action: dict) -> str:
     """Execute a confirmed repay action from pending_action state.
     Called directly by execute_node — not a LangChain tool.
