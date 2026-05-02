@@ -15,6 +15,11 @@ from src.memory.session import (
     save_user_meta
 )
 from src.tools.transaction import execute_repay
+import re
+from langchain_core.messages import AIMessage, HumanMessage
+from src.tools.transaction import prepare_repay_tx
+from src.memory.session import get_user_address
+
 
 logger = logging.getLogger(__name__)
 audit = logging.getLogger("audit")
@@ -46,6 +51,62 @@ model_fast = ChatOpenAI(
     base_url="https://openrouter.ai/api/v1",
     api_key=os.getenv("OPENROUTER_API_KEY")
 )
+
+def extract_repay_request(text: str):
+    amount_match = re.search(r"repay\s+([\d.]+)\s*usdc", text.lower())
+    address_match = re.search(r"0x[a-fA-F0-9]{40}", text)
+
+    amount = float(amount_match.group(1)) if amount_match else None
+    address = address_match.group(0) if address_match else None
+
+    return amount, address
+
+
+def prepare_repay_direct_node(state: AgentState):
+    session_id = state.get("session_id", "default")
+    messages = state["messages"]
+
+    last_human = next(
+        (m for m in reversed(messages) if isinstance(m, HumanMessage)),
+        None,
+    )
+
+    if not last_human:
+        return {
+            "messages": [
+                AIMessage(content="Please tell me how much USDC you want to repay.")
+            ]
+        }
+
+    amount, address = extract_repay_request(last_human.content)
+
+    if address is None:
+        address = state.get("user_address") or get_user_address(session_id)
+
+    if amount is None:
+        return {
+            "messages": [
+                AIMessage(content="Please specify the USDC amount to repay, e.g. `Repay 5 USDC`.")
+            ]
+        }
+
+    if address is None:
+        return {
+            "messages": [
+                AIMessage(content="Please provide your wallet address before preparing the repay transaction.")
+            ]
+        }
+
+    result = prepare_repay_tx.invoke({
+        "amount_usdc": amount,
+        "user_address": address,
+    })
+
+    return {
+        "messages": [AIMessage(content=result)],
+        "pending_action": "repay",
+        "user_address": address,
+    }
 
 def load_session_node(state: AgentState) -> dict:
     session_id = state.get("session_id", "default")
@@ -150,6 +211,9 @@ def intent_node(state: AgentState) -> dict:
         return {"intent": "complex"}
 
     text = last_human.content.lower()
+
+    if "repay" in text.lower() and "usdc" in text.lower():
+        return {"intent": "repay"}
 
     # DeepSeek only handles pure conversation — no tools involved
     is_simple = (

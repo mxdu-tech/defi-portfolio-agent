@@ -13,6 +13,7 @@ from src.agent.nodes import (
 )
 from src.agent.state import AgentState
 from src.tools import tools
+from src.agent.nodes import prepare_repay_direct_node
 
 model_with_tools = model.bind_tools(tools)
 model_fast_with_tools = model_fast.bind_tools(tools)
@@ -20,6 +21,8 @@ model_fast_with_tools = model_fast.bind_tools(tools)
 PREPARE_TOOLS = {"prepare_repay_tx"}
 
 def route_intent(state: AgentState) -> str:
+    if state.get("intent") == "repay":
+        return "prepare_repay_direct"
     return "agent_fast" if state.get("intent") == "simple" else "agent"
 
 def route_after_agent(state: AgentState) -> str:
@@ -49,6 +52,7 @@ def create_graph():
     checkpointer = MemorySaver()
     workflow = StateGraph(AgentState)
 
+    workflow.add_node("prepare_repay_direct", prepare_repay_direct_node)
     workflow.add_node("load_session", load_session_node)
     workflow.add_node("classify_intent", intent_node)
     workflow.add_node("agent", agent_node_with_tools(model_with_tools))
@@ -63,8 +67,9 @@ def create_graph():
     workflow.add_edge("load_session", "classify_intent")
 
     workflow.add_conditional_edges("classify_intent", route_intent, {
+        "prepare_repay_direct": "prepare_repay_direct",
         "agent": "agent",
-        "agent_fast": "agent_fast"
+        "agent_fast": "agent_fast",
     })
 
     # single router for both agent and agent_fast
@@ -85,6 +90,7 @@ def create_graph():
     })
 
     workflow.add_edge("execute", "save_session")
+    workflow.add_edge("prepare_repay_direct", "save_session")
     workflow.add_edge("save_session", END)
 
     return workflow.compile(checkpointer=checkpointer)
