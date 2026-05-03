@@ -1,7 +1,5 @@
-好的，以下是 Markdown 源码，你可以直接复制。视频已改为嵌入形式。
+# DeFi Portfolio Agent
 
-```markdown
-# 🧠 DeFi Portfolio Agent
 
 **AI Agent + DeFi 协议（Aave V3）的智能资产管理系统**
 
@@ -10,6 +8,10 @@
 [![Python](https://img.shields.io/badge/Python-3.10+-yellow)](https://www.python.org)
 
 ---
+
+🌐 语言: [English](./README.md) | 中文
+
+> 一个结合 AI Agent 与 Aave V3 协议的智能资产管理系统，支持自然语言交互、链上数据分析，以及带用户确认机制的链上交易执行。
 
 ## 🎬 项目演示
 
@@ -32,7 +34,7 @@ https://www.youtube.com/watch?v=LcS9avCe8Cs
 
 ---
 
-## 🏗 技术栈
+##  技术栈
 
 | 层 | 技术 |
 |------|------|
@@ -89,12 +91,12 @@ prepare_repay_tx 工具：检测 allowance → 构造 approve_tx + repay_tx
   ↓
 后端 execute_node → 确认结果
   ↓
-前端自动发送「查看我的 Aave 仓位」→ 验证还款结果 ✅
+前端自动发送「查看我的 Aave 仓位」→ 验证还款结果
 ```
 
 ---
 
-## 🧠 架构设计分析
+## 架构设计说明
 
 ### 一、为什么选择 LangGraph 而不是直接调用 LLM
 
