@@ -8,7 +8,7 @@
 
 ---
 
-🌐 Language: English | [中文](./README_CN.md)
+🌐 Language: English | [中文](./README.zh.md)
 
 > An intelligent portfolio management system combining AI Agents with the Aave V3 protocol—featuring natural language interaction, on-chain data analysis, and transaction execution with a mandatory user confirmation layer.
 
