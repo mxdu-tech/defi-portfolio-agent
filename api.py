@@ -23,6 +23,11 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     response: str
 
+class ConfirmRequest(BaseModel):
+    session_id: str = "default"
+    reply: str = "yes"
+    tx_hash: str | None = None
+
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest):
     result = agent.invoke(
@@ -39,4 +44,23 @@ def chat(req: ChatRequest):
 
     return {
         "response": result["messages"][-1].content
+    }
+
+@app.post("/confirm", response_model=ChatResponse)
+def confirm(req: ConfirmRequest):
+    if req.reply != "yes":
+        return {"response": "Transaction cancelled."}
+
+    if not req.tx_hash:
+        return {"response": "Transaction was not submitted. No transaction hash received."}
+
+    explorer_url = f"https://sepolia.basescan.org/tx/{req.tx_hash}"
+
+    return {
+        "response": (
+            "Transaction submitted successfully.\n\n"
+            f"Transaction hash:\n{req.tx_hash}\n\n"
+            f"View on Base Sepolia explorer:\n{explorer_url}\n\n"
+            "You can also ask me to check your updated Aave position."
+        )
     }

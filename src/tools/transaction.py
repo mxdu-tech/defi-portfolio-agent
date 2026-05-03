@@ -183,16 +183,22 @@ def prepare_repay_tx(amount_usdc: float, user_address: str) -> str:
     )
 
     return summary
-    
-def execute_repay(pending_action: dict) -> str:
-    """Execute a confirmed repay action from pending_action state.
-    Called directly by execute_node — not a LangChain tool.
-    """
-    # TODO: integrate wallet signing in production
-    return (
-        f"[DEMO MODE] Transaction broadcast simulated:\n"
-        f"- Repaid {pending_action['amount_usdc']} USDC on Aave V3\n"
-        f"- Network: {pending_action['network']}\n"
-        f"- Status:  success (simulated)\n"
-        f"In production this would sign and broadcast via the user's wallet."
-    )
+
+def execute_repay(pending_action: dict, tx_hash: str | None = None) -> str:
+    explorer = "https://sepolia.basescan.org"
+
+    if not tx_hash:
+        return "Transaction cancelled or no hash received."
+
+    return f"""
+        Transaction sent successfully 
+
+        - Action: Repay {pending_action['amount_usdc']} USDC
+        - Network: {pending_action['network']}
+        - Wallet: {pending_action['user_address']}
+
+        View on explorer:
+        {explorer}/tx/{tx_hash}
+
+        You can track confirmation status in real time.
+        """
