@@ -12,6 +12,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "https://defi-agent-frontend.vercel.app",
         "https://defi-agent.mxdu.me",
+        "https://portfolio-agent.defi.mxdu.me",
     ],
     allow_credentials=True,
     allow_methods=["*"],

@@ -252,7 +252,15 @@ python main.py
 
 **Frontend Repository**: [defi-agent-frontend](https://github.com/mxdu-tech/defi-agent-frontend)
 
-**Live Demo**: https://defi-agent.mxdu.me
+## 🌐 Live Demo
+
+- Primary Demo (Stable):
+
+  👉 https://defi-agent.mxdu.me
+
+- System Architecture Version:
+
+  👉 https://portfolio-agent.defi.mxdu.me
 
 ---
 
